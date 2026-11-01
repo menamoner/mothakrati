@@ -1,0 +1,56 @@
+name: Build Mothakrati APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack Android project (apk.zip)
+        run: |
+          test -f apk.zip || { echo "apk.zip not found in repo root"; exit 1; }
+          mkdir -p android
+          unzip -oq apk.zip -d android
+
+      - name: Copy website files into the app (offline assets)
+        run: |
+          test -f index.html || { echo "index.html not found in repo root"; exit 1; }
+          mkdir -p android/app/src/main/assets
+          tar --exclude=./android --exclude=./.git --exclude=./.github --exclude=./apk.zip \
+              -cf - . | tar -xf - -C android/app/src/main/assets
+          ls -la android/app/src/main/assets
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build release APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk Mothakrati.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mothakrati-apk
+          path: Mothakrati.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Mothakrati APK build ${{ github.run_number }}
+          files: Mothakrati.apk
